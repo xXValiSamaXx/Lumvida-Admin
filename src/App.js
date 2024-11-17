@@ -7,7 +7,7 @@ import './App.css';
 
 function App() {
   return (
-    <Router>
+    <Router basename="/Lumvida-Admin">
       <div className="min-h-screen bg-gray-100">
         <Layout>
           <Routes>

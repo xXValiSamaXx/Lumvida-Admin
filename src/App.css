@@ -36,3 +36,43 @@
     transform: rotate(360deg);
   }
 }
+
+@import 'leaflet/dist/leaflet.css';
+
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  border-radius: 0.5rem;
+}
+
+/* Personalización de los popups */
+.leaflet-popup-content-wrapper {
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.leaflet-popup-content {
+  margin: 0;
+  padding: 0;
+}
+
+/* Personalización de los controles de zoom */
+.leaflet-control-zoom {
+  border: none !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+}
+
+.leaflet-control-zoom-in,
+.leaflet-control-zoom-out {
+  background-color: white !important;
+  color: #4B5563 !important;
+  width: 30px !important;
+  height: 30px !important;
+  line-height: 30px !important;
+  border-radius: 0.25rem !important;
+}
+
+.leaflet-control-zoom-in {
+  margin-bottom: 2px !important;
+}

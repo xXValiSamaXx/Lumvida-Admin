@@ -3,6 +3,10 @@ import { db } from '../firebase';
 import { collection, query, onSnapshot } from '@firebase/firestore';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+// Importaciones para el mapa
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 const AdminPanel = () => {
   const [reports, setReports] = useState([]);
@@ -25,27 +29,84 @@ const AdminPanel = () => {
     });
   };
 
+    // Nuevos estados para el mapa y estadísticas
+    const [mapCenter] = useState([25.6866, -100.3161]); // Coordenadas de Monterrey
+    const [reportMarkers, setReportMarkers] = useState([]);
+    const [coloniaStats, setColoniaStats] = useState([]);
+  
+    // Función para obtener el icono del marcador
+    const getMarkerIcon = (category) => {
+      return L.icon({
+        iconUrl: '/marker-icon.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+      });
+    };
+  
+    // Función para manejar el clic en un marcador
+    const handleMarkerClick = (marker) => {
+      const report = reports.find(r => r.id === marker.id);
+      if (report) {
+        setSelectedReport(report);
+      }
+    };
+
   useEffect(() => {
     const reportsRef = collection(db, 'reportes');
     const q = query(reportsRef);
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const reportsData = [];
+      const markers = [];
+      const coloniaStatsTemp = {};
+
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        reportsData.push({
+        const report = {
           id: doc.id,
           ...data,
           fechaFormateada: formatFirestoreTimestamp(data.fecha)
-        });
+        };
+        reportsData.push(report);
+
+        // Procesar marcadores si hay ubicación
+        if (data.ubicacion) {
+          markers.push({
+            id: doc.id,
+            lat: data.ubicacion.latitud,
+            lng: data.ubicacion.longitud,
+            category: data.categoria,
+            address: data.direccion,
+            status: data.estado
+          });
+        }
+
+        // Procesar estadísticas por colonia
+        if (data.colonia) {
+          if (!coloniaStatsTemp[data.colonia]) {
+            coloniaStatsTemp[data.colonia] = {
+              colonia: data.colonia,
+              totalReportes: 0,
+              resueltos: 0
+            };
+          }
+          coloniaStatsTemp[data.colonia].totalReportes++;
+          if (data.estado === 'Resuelto') {
+            coloniaStatsTemp[data.colonia].resueltos++;
+          }
+        }
       });
+
       setReports(reportsData);
+      setReportMarkers(markers);
+      setColoniaStats(Object.values(coloniaStatsTemp));
       applyFilters(reportsData, filterType, category);
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [filterType, category]);
 
   const getProxyUrl = (url) => {
     return `https://corsproxy.io/?${encodeURIComponent(url)}`;
@@ -233,7 +294,89 @@ const AdminPanel = () => {
             <option value="Drenajes Obstruidos">Drenajes Obstruidos</option>
           </select>
         </div>
-
+  
+        {/* Contenedor principal con grid responsivo */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {/* Sección de Estadísticas por colonia */}
+          <div className="w-full h-full overflow-auto">
+            <h2 className="text-xl font-semibold mb-4">Estadísticas por colonia</h2>
+            <div className="space-y-4">
+              {/* Tabla de estadísticas */}
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Colonia
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Total Reportes
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Resueltos
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {coloniaStats.map((stat, index) => (
+                      <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {stat.colonia}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {stat.totalReportes}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {stat.resueltos}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+  
+          {/* Contenedor del mapa con altura fija y scroll independiente */}
+          <div className="w-full h-[400px] md:h-[500px] relative overflow-hidden border rounded-lg">
+            <div className="absolute inset-0">
+              <MapContainer
+                center={mapCenter}
+                zoom={13}
+                style={{ height: '100%', width: '100%' }}
+                className="z-0"
+                scrollWheelZoom={false}
+              >
+                <TileLayer
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                />
+                {reportMarkers.map((marker) => (
+                  <Marker
+                    key={marker.id}
+                    position={[marker.lat, marker.lng]}
+                    icon={getMarkerIcon(marker.category)}
+                  >
+                    <Popup>
+                      <div>
+                        <h3 className="font-semibold">{marker.category}</h3>
+                        <p>{marker.address}</p>
+                        <p>Estado: {marker.status}</p>
+                        <button
+                          onClick={() => handleMarkerClick(marker)}
+                          className="mt-2 px-3 py-1 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700"
+                        >
+                          Ver detalles
+                        </button>
+                      </div>
+                    </Popup>
+                  </Marker>
+                ))}
+              </MapContainer>
+            </div>
+          </div>
+        </div>
+  
         {loading ? (
           <div className="text-center py-4">
             <p>Cargando reportes...</p>
@@ -269,7 +412,7 @@ const AdminPanel = () => {
             ))}
           </div>
         )}
-
+  
         {selectedReport && (
           <div 
             className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto"

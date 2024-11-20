@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, ZoomControl, LayersControl } from 'react-leaflet';
-import { collection, query, onSnapshot } from '@firebase/firestore';
+import { MapContainer, TileLayer, Marker, Popup, ZoomControl, LayersControl, useMapEvents } from 'react-leaflet';import { collection, query, onSnapshot } from '@firebase/firestore';
 import { db } from '../firebase';
 import { icons } from './CustomIcons';
 import HeatmapLayer from './HeatmapLayer';
@@ -12,8 +11,39 @@ const { BaseLayer} = LayersControl;
 const IncidentsMap = () => {
   // Recuperar la última ubicación conocida del localStorage o usar la predeterminada
   const getInitialMapCenter = () => {
-    const savedLocation = localStorage.getItem('lastKnownLocation');
-    return savedLocation ? JSON.parse(savedLocation) : [20.5887, -87.3187];
+    const savedView = localStorage.getItem('mapView');
+    if (savedView) {
+      const view = JSON.parse(savedView);
+      return view.center;
+    }
+    return [20.5887, -87.3187]; // Coordenadas por defecto
+  };
+  
+  // Componente para manejar eventos del mapa
+  const MapEventHandler = () => {
+    const map = useMapEvents({
+      moveend: () => {
+        // Guardar tanto la posición como el zoom
+        const center = map.getCenter();
+        const zoom = map.getZoom();
+        const mapView = {
+          center: [center.lat, center.lng],
+          zoom: zoom
+        };
+        localStorage.setItem('mapView', JSON.stringify(mapView));
+      },
+      zoomend: () => {
+        // Guardar tanto la posición como el zoom
+        const center = map.getCenter();
+        const zoom = map.getZoom();
+        const mapView = {
+          center: [center.lat, center.lng],
+          zoom: zoom
+        };
+        localStorage.setItem('mapView', JSON.stringify(mapView));
+      }
+    });
+    return null;
   };
 
   const [incidents, setIncidents] = useState([]);
@@ -42,18 +72,40 @@ const IncidentsMap = () => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const { latitude, longitude } = position.coords;
-          const newLocation = [latitude, longitude];
+          
+          // Verificar si la ubicación está dentro de Quintana Roo
+          const isInQuintanaRoo = 
+            latitude >= 18.0 && latitude <= 21.6 && 
+            longitude >= -89.5 && longitude <= -86.7;
+  
+          let newLocation;
+          
+          if (isInQuintanaRoo) {
+            // Si está en Quintana Roo, usar la ubicación del usuario
+            newLocation = [latitude, longitude];
+          } else {
+            // Si no está en Quintana Roo, usar la última ubicación guardada o la ubicación predeterminada
+            const savedLocation = localStorage.getItem('lastKnownLocation');
+            newLocation = savedLocation ? JSON.parse(savedLocation) : [20.5887, -87.3187];
+          }
+          
           setMapCenter(newLocation);
           localStorage.setItem('lastKnownLocation', JSON.stringify(newLocation));
           setLocationInitialized(true);
         },
         (error) => {
           console.error("Error getting location:", error);
+          // En caso de error, intentar usar la última ubicación conocida
           const savedLocation = localStorage.getItem('lastKnownLocation');
           if (savedLocation) {
             setMapCenter(JSON.parse(savedLocation));
           }
           setLocationInitialized(true);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 5000,
+          maximumAge: 0
         }
       );
     }
@@ -251,17 +303,6 @@ const getNeighborhoodStats = () => {
                 <span className="mr-2">🔥</span>
                 {showHeatmap ? 'Ocultar Mapa de Calor' : 'Mostrar Mapa de Calor'}
               </button>
-  
-              <button
-                onClick={() => setMapType(prev => prev === 'streets' ? 'satellite' : 'streets')}
-                className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-colors
-                  ${mapType === 'satellite' 
-                    ? 'bg-blue-500 text-white hover:bg-blue-600' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-              >
-                <span className="mr-2">🗺️</span>
-                {mapType === 'satellite' ? 'Vista Calles' : 'Vista Satélite'}
-              </button>
             </div>
           </div>
   
@@ -390,32 +431,53 @@ const getNeighborhoodStats = () => {
           </div>
   
           {/* Contenedor del Mapa */}
-          <div className="flex-1 min-h-0 rounded-lg overflow-hidden">
-            <MapContainer
-              key={`${mapCenter[0]}-${mapCenter[1]}-${mapType}`}
-              center={mapCenter}
-              zoom={initialZoom}
-              style={{ height: '100%', width: '100%' }}
-              zoomControl={false}
-            >
+          <div className="flex-1 min-h-0 rounded-lg overflow-hidden" style={{ height: '140vh' }}>
+          <MapContainer
+            key={`${mapCenter[0]}-${mapCenter[1]}-${mapType}`}
+            center={mapCenter}
+            zoom={initialZoom}
+            style={{ height: '100%', width: '100%' }}
+            zoomControl={false}
+            minZoom={7}
+            maxBounds={[
+              [18.0, -89.5], // Esquina suroeste de Quintana Roo
+              [21.6, -86.7]  // Esquina noreste de Quintana Roo
+            ]}
+            maxBoundsViscosity={1.0}
+          >
               <ZoomControl position="topright" />
               
               <LayersControl position="topright">
-                <BaseLayer checked={mapType === 'streets'} name="Calles">
-                  <TileLayer
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                  />
-                </BaseLayer>
-                <BaseLayer checked={mapType === 'satellite'} name="Satélite">
-                  <TileLayer
-                    url="https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
-                    maxZoom={20}
-                    subdomains={['mt0', 'mt1', 'mt2', 'mt3']}
-                    attribution="&copy; Google Maps"
-                  />
-                </BaseLayer>
-              </LayersControl>
+              <BaseLayer 
+                checked={mapType === 'streets'} 
+                name="Calles"
+                eventHandlers={{
+                  add: () => setMapType('streets')
+                }}
+              >
+                <TileLayer
+                  url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}.png"
+                  attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+                  maxZoom={20}
+                  minZoom={1}
+                />
+              </BaseLayer>
+              <BaseLayer 
+                checked={mapType === 'satellite'} 
+                name="Satélite"
+                eventHandlers={{
+                  add: () => setMapType('satellite')
+                }}
+              >
+                <TileLayer
+                  url="https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}"
+                  maxZoom={20}
+                  minZoom={1}
+                  subdomains={['mt0', 'mt1', 'mt2', 'mt3']}
+                  attribution="&copy; Google Maps"
+                />
+              </BaseLayer>
+            </LayersControl>
   
               {showHeatmap && (
                 <HeatmapLayer
@@ -459,6 +521,8 @@ const getNeighborhoodStats = () => {
                   </Popup>
                 </Marker>
               ))}
+
+              <MapEventHandler />
             </MapContainer>
           </div>
         </div>

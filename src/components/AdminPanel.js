@@ -12,18 +12,19 @@ const AdminPanel = () => {
   const [loading, setLoading] = useState(true);
   const [selectedReport, setSelectedReport] = useState(null);
 
-  const formatFirestoreTimestamp = (timestamp) => {
-    if (!timestamp) return '';
-    const date = new Date(timestamp.seconds * 1000);
-    return date.toLocaleString('es-MX', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
-  };
+const formatFirestoreTimestamp = (timestamp) => {
+  if (!timestamp) return '';
+  const date = new Date(timestamp.seconds * 1000);
+  
+  return date.toLocaleString('es-MX', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+};
 
   useEffect(() => {
     const reportsRef = collection(db, 'reportes');
@@ -47,10 +48,6 @@ const AdminPanel = () => {
     return () => unsubscribe();
   }, []);
 
-  const getProxyUrl = (url) => {
-    return `https://corsproxy.io/?${encodeURIComponent(url)}`;
-  };
-
   const generatePDF = async (report) => {
     try {
       console.log('Iniciando generación de PDF para reporte:', report.id);
@@ -65,7 +62,7 @@ const AdminPanel = () => {
       doc.setFontSize(12);
       let y = 40;
       
-      // Agregando información básica con manejo de undefined
+      // Información básica
       doc.text(`Tipo de Reporte: ${report.categoria || 'No especificado'}`, 20, y);
       y += 10;
       doc.text(`Fecha y Hora: ${report.fechaFormateada || 'No especificado'}`, 20, y);
@@ -75,49 +72,31 @@ const AdminPanel = () => {
       doc.text(`Estado: ${report.estado || 'No especificado'}`, 20, y);
       y += 10;
       
-      // Manejar comentarios largos con wrapping
+      // Comentarios
       const comentario = report.comentario || 'Sin comentario';
       const comentarioLines = doc.splitTextToSize(comentario, 170);
       doc.text(comentarioLines, 20, y);
       y += (comentarioLines.length * 7) + 3;
       
+      // Ubicación
       if (report.ubicacion) {
         doc.text(`Ubicación: ${report.ubicacion.latitud}, ${report.ubicacion.longitud}`, 20, y);
         y += 10;
       }
       
-      // Manejo de imagen centrada
+      // Manejo de imagen
       if (report.foto) {
         console.log('Procesando imagen del reporte...');
         try {
-          let imageUrl = report.foto;
-          if (!imageUrl.startsWith('data:image')) {
-            imageUrl = getProxyUrl(report.foto);
-          }
+          // La imagen ya viene en base64, la usamos directamente
+          const imageData = report.foto;
           
-          const response = await fetch(imageUrl);
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          
-          const blob = await response.blob();
-          const imageData = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-          });
-
-          // Obtener dimensiones de la página
+          // Dimensiones de la página
           const pageWidth = doc.internal.pageSize.getWidth();
-          const pageHeight = doc.internal.pageSize.getHeight();
           
-          // Reiniciar la posición Y para la imagen
-          y = -20; // Posición vertical fija desde arriba
-          
-          // Definir dimensiones para la imagen rotada
-          const imageWidth = 180;  // Ancho de la imagen
-          const imageHeight = 120; // Alto de la imagen
+          // Dimensiones de la imagen
+          const imageWidth = 180;
+          const imageHeight = 120;
           
           // Calcular posición X para centrar
           const xPos = (pageWidth - imageWidth) / 2;
@@ -127,7 +106,7 @@ const AdminPanel = () => {
             imageData,
             'JPEG',
             xPos,
-            y,
+            -20,  // Posición vertical fija desde arriba
             imageWidth,
             imageHeight,
             null,
@@ -179,13 +158,20 @@ const AdminPanel = () => {
           return true;
       }
     });
-
+  
+    // Ordenar por fecha descendente (más reciente primero)
+    filtered.sort((a, b) => {
+      const timeA = a.fecha.seconds;
+      const timeB = b.fecha.seconds;
+      return timeB - timeA;  // Orden descendente
+    });
+  
     if (cat !== 'all' && cat !== 'todos') {
       filtered = filtered.filter(report => 
         report.categoria && report.categoria.trim().toLowerCase() === cat.trim().toLowerCase()
       );
     }
-
+  
     setFilteredReports(filtered);
   };
 

@@ -1,19 +1,19 @@
 {
   "files": {
-    "main.css": "/Lumvida-Admin/static/css/main.d0cda7dd.css",
-    "main.js": "/Lumvida-Admin/static/js/main.a3c81c2e.js",
+    "main.css": "/Lumvida-Admin/static/css/main.0e7179e5.css",
+    "main.js": "/Lumvida-Admin/static/js/main.09ae0090.js",
     "static/js/239.9ddb85a3.chunk.js": "/Lumvida-Admin/static/js/239.9ddb85a3.chunk.js",
     "static/js/213.e529750b.chunk.js": "/Lumvida-Admin/static/js/213.e529750b.chunk.js",
     "static/js/732.18a8716c.chunk.js": "/Lumvida-Admin/static/js/732.18a8716c.chunk.js",
     "index.html": "/Lumvida-Admin/index.html",
-    "main.d0cda7dd.css.map": "/Lumvida-Admin/static/css/main.d0cda7dd.css.map",
-    "main.a3c81c2e.js.map": "/Lumvida-Admin/static/js/main.a3c81c2e.js.map",
+    "main.0e7179e5.css.map": "/Lumvida-Admin/static/css/main.0e7179e5.css.map",
+    "main.09ae0090.js.map": "/Lumvida-Admin/static/js/main.09ae0090.js.map",
     "239.9ddb85a3.chunk.js.map": "/Lumvida-Admin/static/js/239.9ddb85a3.chunk.js.map",
     "213.e529750b.chunk.js.map": "/Lumvida-Admin/static/js/213.e529750b.chunk.js.map",
     "732.18a8716c.chunk.js.map": "/Lumvida-Admin/static/js/732.18a8716c.chunk.js.map"
   },
   "entrypoints": [
-    "static/css/main.d0cda7dd.css",
-    "static/js/main.a3c81c2e.js"
+    "static/css/main.0e7179e5.css",
+    "static/js/main.09ae0090.js"
   ]
 }

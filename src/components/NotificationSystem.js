@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Bell, X } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Bell, X, Trash2 } from 'lucide-react';
 import { collection, query, orderBy, limit, onSnapshot, updateDoc, doc } from '@firebase/firestore';
 import { db } from '../firebase';
 import { format } from 'date-fns/format';
@@ -7,6 +7,7 @@ import { format } from 'date-fns/format';
 export const NotificationSystem = () => {
   const [notifications, setNotifications] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef(null);
 
   const formatDate = (timestamp) => {
     if (!timestamp) return '';
@@ -17,6 +18,17 @@ export const NotificationSystem = () => {
       return 'Fecha no disponible';
     }
   };
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const markAsRead = async (notificationId) => {
     try {
@@ -61,7 +73,7 @@ export const NotificationSystem = () => {
   }, []);
 
   return (
-    <div className="relative">
+    <div className="relative" ref={dropdownRef}>
       <button 
         className="relative p-2 rounded-lg hover:bg-gray-100"
         onClick={() => setShowDropdown(!showDropdown)}
@@ -76,12 +88,30 @@ export const NotificationSystem = () => {
         <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border z-50">
           <div className="p-4 border-b flex justify-between items-center">
             <h3 className="font-semibold">Notificaciones</h3>
-            <button
-              className="text-gray-500 hover:text-gray-700"
-              onClick={() => setNotifications([])}
-            >
-              <X className="h-5 w-5" />
-            </button>
+            <div className="flex gap-2">
+              <button
+                className="text-gray-500 hover:text-gray-700"
+                onClick={async () => {
+                  try {
+                    for (const notification of notifications) {
+                      await updateDoc(doc(db, 'reportes', notification.id), { deleted: true });
+                    }
+                    setNotifications([]);
+                  } catch (error) {
+                    console.error('Error deleting all notifications:', error);
+                  }
+                }}
+                title="Eliminar todas las notificaciones"
+              >
+                <Trash2 className="h-5 w-5" />
+              </button>
+              <button
+                className="text-gray-500 hover:text-gray-700"
+                onClick={() => setShowDropdown(false)}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
           </div>
           <div className="max-h-96 overflow-y-auto">
             {notifications.length === 0 ? (

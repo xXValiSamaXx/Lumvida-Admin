@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, query, onSnapshot } from '@firebase/firestore';
-import { Bell, Filter, MapPin } from 'lucide-react';
+import { collection, query, onSnapshot, doc, updateDoc } from '@firebase/firestore';
+import { Bell, Filter, MapPin, Calendar } from 'lucide-react';
 import NotificationSystem from './NotificationSystem';
 import { useReportStats } from '../hooks/useReportStats';
 import jsPDF from 'jspdf';
@@ -9,151 +9,188 @@ import 'jspdf-autotable';
 import { addImageToPDF } from '../utils/pdfUtils';
 
 const AdminPanel = () => {
-  const [reports, setReports] = useState([]);
-  const [filteredReports, setFilteredReports] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedReport, setSelectedReport] = useState(null);
-  const [filterType, setFilterType] = useState('month');
-  const [category, setCategory] = useState('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  const stats = useReportStats();
+ const [reports, setReports] = useState([]);
+ const [filteredReports, setFilteredReports] = useState([]);
+ const [loading, setLoading] = useState(true);
+ const [selectedReport, setSelectedReport] = useState(null);
+ const [filterType, setFilterType] = useState('month');
+ const [category, setCategory] = useState('all');
+ const [searchTerm, setSearchTerm] = useState('');
+ const [selectedStatus, setSelectedStatus] = useState('');
+ const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+ const [showDatePicker, setShowDatePicker] = useState(false);
+ const stats = useReportStats();
 
-  const formatFirestoreTimestamp = (timestamp) => {
-    if (!timestamp) return '';
-    const date = new Date(timestamp.seconds * 1000);
-    return date.toLocaleString('es-MX', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-  };
+ const formatFirestoreTimestamp = (timestamp) => {
+   if (!timestamp) return '';
+   const date = new Date(timestamp.seconds * 1000);
+   return date.toLocaleString('es-MX', {
+     hour: '2-digit',
+     minute: '2-digit',
+     hour12: true,
+     day: '2-digit',
+     month: '2-digit',
+     year: 'numeric',
+   });
+ };
 
-  useEffect(() => {
-    const reportsRef = collection(db, 'reportes');
-    const q = query(reportsRef);
+ const updateReportStatus = async (reportId, newStatus) => {
+   try {
+     const reportRef = doc(db, 'reportes', reportId);
+     await updateDoc(reportRef, {
+       estado: newStatus
+     });
+     setSelectedReport(prev => ({...prev, estado: newStatus}));
+   } catch (error) {
+     console.error('Error updating report status:', error);
+     alert('Error al actualizar el estado del reporte');
+   }
+ };
 
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const reportsData = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        reportsData.push({
-          id: doc.id,
-          ...data,
-          fechaFormateada: formatFirestoreTimestamp(data.fecha)
-        });
-      });
-      setReports(reportsData);
-      applyFilters(reportsData);
-      setLoading(false);
-    });
+ useEffect(() => {
+   const reportsRef = collection(db, 'reportes');
+   const q = query(reportsRef);
 
-    return () => unsubscribe();
-  }, []);
+   const unsubscribe = onSnapshot(q, (querySnapshot) => {
+     const reportsData = [];
+     querySnapshot.forEach((doc) => {
+       const data = doc.data();
+       reportsData.push({
+         id: doc.id,
+         ...data,
+         fechaFormateada: formatFirestoreTimestamp(data.fecha)
+       });
+     });
+     setReports(reportsData);
+     applyFilters(reportsData);
+     setLoading(false);
+   });
 
-  const applyFilters = (reportsToFilter = reports) => {
-    let filtered = [...reportsToFilter];
+   return () => unsubscribe();
+ }, []);
+
+ const applyFilters = (reportsToFilter = reports) => {
+  let filtered = [...reportsToFilter];
+  const filterDate = new Date(selectedDate + 'T00:00:00');
+  
+  filtered = filtered.filter(report => {
+    if (!report.fecha) return false;
+    const reportDate = new Date(report.fecha.seconds * 1000);
     
-    // Filtro por tiempo
-    const now = new Date();
-    filtered = filtered.filter(report => {
-      if (!report.fecha) return false;
-      const reportDate = new Date(report.fecha.seconds * 1000);
-      
-      switch (filterType) {
-        case 'month': {
-          return reportDate.getMonth() === now.getMonth() &&
-                 reportDate.getFullYear() === now.getFullYear();
-        }
-        case 'week': {
-          const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          return reportDate >= oneWeekAgo;
-        }
-        case 'day': {
-          return reportDate.getDate() === now.getDate() &&
-                 reportDate.getMonth() === now.getMonth() &&
-                 reportDate.getFullYear() === now.getFullYear();
-        }
-        default:
-          return true;
+    switch (filterType) {
+      case 'month': {
+        return reportDate.getMonth() === filterDate.getMonth() &&
+               reportDate.getFullYear() === filterDate.getFullYear();
       }
-    });
-    
-    if (category !== 'all') {
-      filtered = filtered.filter(report => 
-        report.categoria === category
-      );
-    }
-
-    if (searchTerm) {
-      const search = searchTerm.toLowerCase();
-      filtered = filtered.filter(report => 
-        report.folio?.toString().toLowerCase().includes(search) ||
-        report.categoria?.toLowerCase().includes(search) ||
-        report.direccion?.toLowerCase().includes(search) ||
-        report.estado?.toLowerCase().includes(search)
-      );
-    }
-    
-    filtered.sort((a, b) => b.fecha.seconds - a.fecha.seconds);
-    setFilteredReports(filtered);
-  };
-
-  useEffect(() => {
-    applyFilters();
-  }, [filterType, category, searchTerm]);
-
-  const generatePDF = async (report) => {
-    try {
-      const doc = new jsPDF();
-      
-      doc.setFont('helvetica');
-      doc.setFontSize(20);
-      doc.text('Reporte de Incidente', 105, 20, { align: 'center' });
-      
-      doc.setFontSize(12);
-      let y = 40;
-      
-      doc.text(`Folio: ${report.folio || 'No especificado'}`, 20, y);
-      y += 10;
-      doc.text(`Tipo de Reporte: ${report.categoria || 'No especificado'}`, 20, y);
-      y += 10;
-      doc.text(`Fecha y Hora: ${report.fechaFormateada || 'No especificado'}`, 20, y);
-      y += 10;
-      doc.text(`Dirección: ${report.direccion || 'No especificado'}`, 20, y);
-      y += 10;
-      doc.text(`Estado: ${report.estado || 'No especificado'}`, 20, y);
-      y += 10;
-      
-      const comentario = report.comentario || 'Sin comentario';
-      const comentarioLines = doc.splitTextToSize(comentario, 170);
-      doc.text(comentarioLines, 20, y);
-      y += (comentarioLines.length * 7) + 3;
-      
-      if (report.ubicacion) {
-        doc.text(`Ubicación: ${report.ubicacion.latitud}, ${report.ubicacion.longitud}`, 20, y);
-        y += 10;
+      case 'week': {
+        const startOfWeek = new Date(filterDate);
+        // No restamos días, empezamos desde la fecha seleccionada
+        startOfWeek.setHours(0, 0, 0, 0);
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 4); // 4 días más para completar 5 días
+        endOfWeek.setHours(23, 59, 59, 999);
+        
+        return reportDate >= startOfWeek && reportDate <= endOfWeek;
       }
-      
-      if (report.foto) {
-        try {
-          y = await addImageToPDF(doc, report.foto, y);
-        } catch (error) {
-          console.error('Error al procesar la imagen:', error);
-          doc.text('Error al cargar la imagen', 20, y);
-          y += 10;
-        }
+      case 'day': {
+        return reportDate.toDateString() === filterDate.toDateString();
       }
-      
-      doc.save(`reporte-${report.folio || report.id}.pdf`);
-      
-    } catch (error) {
-      console.error('Error general al generar el PDF:', error);
-      alert('Hubo un error al generar el PDF. Por favor, intente nuevamente.');
+      default:
+        return true;
     }
-  };
+  });
+   
+   if (category !== 'all') {
+     filtered = filtered.filter(report => report.categoria === category);
+   }
+
+   if (searchTerm) {
+     const search = searchTerm.toLowerCase();
+     filtered = filtered.filter(report => 
+       report.folio?.toString().toLowerCase().includes(search) ||
+       report.categoria?.toLowerCase().includes(search) ||
+       report.direccion?.toLowerCase().includes(search) ||
+       report.estado?.toLowerCase().includes(search)
+     );
+   }
+   
+  // Ordenamiento
+  filtered.sort((a, b) => {
+    const dateA = new Date(a.fecha.seconds * 1000);
+    const dateB = new Date(b.fecha.seconds * 1000);
+    return dateB - dateA;
+  });
+  
+  setFilteredReports(filtered);
+};
+
+ useEffect(() => {
+   applyFilters();
+ }, [filterType, category, searchTerm, selectedDate]);
+
+ const generatePDF = async (report) => {
+   try {
+     const doc = new jsPDF();
+     
+     doc.setFont('helvetica');
+     doc.setFontSize(20);
+     doc.text('Reporte de Incidente', 105, 20, { align: 'center' });
+     
+     doc.setFontSize(12);
+     let y = 40;
+     
+     doc.text(`Folio: ${report.folio || 'No especificado'}`, 20, y);
+     y += 10;
+     doc.text(`Tipo de Reporte: ${report.categoria || 'No especificado'}`, 20, y);
+     y += 10;
+     doc.text(`Fecha y Hora: ${report.fechaFormateada || 'No especificado'}`, 20, y);
+     y += 10;
+     doc.text(`Dirección: ${report.direccion || 'No especificado'}`, 20, y);
+     y += 10;
+     doc.text(`Estado: ${report.estado || 'No especificado'}`, 20, y);
+     y += 10;
+     
+     const comentario = report.comentario || 'Sin comentario';
+     const comentarioLines = doc.splitTextToSize(comentario, 170);
+     doc.text(comentarioLines, 20, y);
+     y += (comentarioLines.length * 7) + 3;
+     
+     if (report.ubicacion) {
+       doc.text(`Ubicación: ${report.ubicacion.latitud}, ${report.ubicacion.longitud}`, 20, y);
+       y += 10;
+     }
+     
+     if (report.foto) {
+       try {
+         y = await addImageToPDF(doc, report.foto, y);
+       } catch (error) {
+         console.error('Error al procesar la imagen:', error);
+         doc.text('Error al cargar la imagen', 20, y);
+         y += 10;
+       }
+     }
+     
+     doc.save(`reporte-${report.folio || report.id}.pdf`);
+     
+   } catch (error) {
+     console.error('Error general al generar el PDF:', error);
+     alert('Hubo un error al generar el PDF. Por favor, intente nuevamente.');
+   }
+ };
+
+ const DatePicker = () => (
+   <div className="absolute mt-2 bg-white rounded-lg shadow-lg p-4 border z-10">
+     <input
+       type="date"
+       className="rounded-lg border border-gray-300 px-3 py-2"
+       value={selectedDate}
+       onChange={(e) => {
+         setSelectedDate(e.target.value);
+         applyFilters();
+       }}
+     />
+   </div>
+ );
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
@@ -161,23 +198,35 @@ const AdminPanel = () => {
         <div className="container flex h-16 items-center px-10">
           <h1 className="text-2xl font-bold">Panel Administrativo LumVida</h1>
           <div className="ml-auto flex items-center gap-4">
+            <NotificationSystem />
           </div>
-          <NotificationSystem />
         </div>
       </header>
 
       <main className="flex-1 space-y-4 p-8 pt-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">
-            <select
-              className="w-[180px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-            >
-              <option value="month">Por Mes</option>
-              <option value="week">Por Semana</option>
-              <option value="day">Por Día</option>
-            </select>
+            <div className="relative">
+              <select
+                className="w-[180px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+              >
+                <option value="month">Por Mes</option>
+                <option value="week">Por Semana</option>
+                <option value="day">Por Día</option>
+              </select>
+            </div>
+            <div className="relative">
+              <button
+                className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                onClick={() => setShowDatePicker(!showDatePicker)}
+              >
+                <Calendar className="h-4 w-4" />
+                {selectedDate || 'Seleccionar fecha'}
+              </button>
+              {showDatePicker && <DatePicker />}
+            </div>
             <select
               className="w-[180px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
               value={category}
@@ -333,7 +382,8 @@ const AdminPanel = () => {
                     <span>{selectedReport.direccion}</span>
                   </div>
                   <div className="flex justify-between items-center border-b pb-2">
-                    <span className="font-medium">Estado:</span>
+                  <span className="font-medium">Estado:</span>
+                  <div className="flex items-center gap-2">
                     <span className={`px-3 py-1 rounded-full text-sm text-white ${
                       selectedReport.estado?.toLowerCase() === 'pendiente' ? 'bg-yellow-500' :
                       selectedReport.estado?.toLowerCase() === 'completado' ? 'bg-green-500' :
@@ -341,7 +391,19 @@ const AdminPanel = () => {
                     }`}>
                       {selectedReport.estado || 'pendiente'}
                     </span>
+                    <select
+                      className="rounded-lg border border-gray-300 px-3 py-1 text-sm"
+                      value={selectedStatus}
+                      onChange={(e) => {
+                        setSelectedStatus(e.target.value);
+                        updateReportStatus(selectedReport.id, e.target.value);
+                      }}
+                    >
+                      <option value="pendiente">Pendiente</option>
+                      <option value="completado">Completado</option>
+                    </select>
                   </div>
+                </div>
                   {selectedReport.ubicacion && (
                     <div className="flex justify-between items-center border-b pb-2">
                       <span className="font-medium">Ubicación:</span>

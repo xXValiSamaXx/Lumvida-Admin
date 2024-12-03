@@ -455,12 +455,12 @@ const getNeighborhoodStats = () => {
                   add: () => setMapType('streets')
                 }}
               >
-                <TileLayer
-                  url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}.png"
-                  attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-                  maxZoom={20}
-                  minZoom={1}
-                />
+              <TileLayer
+                url="https://api.maptiler.com/maps/topo-v2/256/{z}/{x}/{y}@2x.png?key=iFjkJKOCUKNcV2OtJe1S"
+                attribution="&copy; <a href='https://www.maptiler.com/'>MapTiler</a>"
+                maxZoom={20}
+              />
+
               </BaseLayer>
               <BaseLayer 
                 checked={mapType === 'satellite'} 

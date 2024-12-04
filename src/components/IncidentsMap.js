@@ -222,11 +222,22 @@ const IncidentsMap = () => {
     return heatmapData;
   };
 
-// Remplaza la función getNeighborhoodStats actual con esta:
-const getNeighborhoodStats = () => {
+  const getNeighborhoodStats = () => {
+    console.log('--- Iniciando getNeighborhoodStats ---');
+    
     const stats = filteredIncidents.reduce((acc, incident) => {
-      // Usar la colonia del incidente
-      const colonia = incident.colonia || incident.direccion || 'Sin especificar';
+      // Log de cada incidente para ver sus propiedades
+      console.log('Procesando incidente:', {
+        id: incident.id,
+        colonia: incident.colonia,
+        direccion: incident.direccion,
+        datos_completos: incident
+      });
+
+      // Usar la colonia directamente del incidente
+      const colonia = incident.colonia || 'Sin especificar';
+      
+      console.log('Colonia asignada:', colonia);
   
       // Inicializar estadísticas para esta colonia si no existe
       if (!acc[colonia]) {
@@ -252,9 +263,17 @@ const getNeighborhoodStats = () => {
           count: 1
         });
       }
+
+      console.log('Estadísticas actualizadas para colonia:', {
+        colonia,
+        total: acc[colonia].total,
+        categorias: acc[colonia].categorias
+      });
       
       return acc;
     }, {});
+
+    console.log('Estadísticas finales por colonia:', stats);
   
     // Ordenar las colonias por total de incidentes y calcular porcentajes
     return Object.entries(stats)
@@ -357,7 +376,7 @@ const getNeighborhoodStats = () => {
           <div className="flex-shrink-0">
             <div className="bg-white rounded-lg shadow p-4">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold">Estadísticas por Colonia</h2>
+                <h2 className="text-lg font-semibold">Estadísticas por Calles</h2>
                 <button
                   onClick={() => setShowStatistics(!showStatistics)}
                   className="text-sm text-blue-500 hover:text-blue-600"

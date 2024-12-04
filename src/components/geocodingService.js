@@ -1,39 +1,114 @@
-// geocodingService.js
 const locationCache = new Map();
 
-const extractCodigoPostal = (direccion) => {
-  if (!direccion || typeof direccion !== 'string') return null;
-  const cpMatch = direccion.match(/\b(\d{5})\b/);
-  return cpMatch ? cpMatch[1] : null;
+const extractLocationInfo = (addressComponents) => {
+  let info = {
+    colonia: '',
+    codigoPostal: '',
+    ciudad: '',
+    estado: '',
+    route: '', // calle
+    streetNumber: '' // número
+  };
+
+  for (const component of addressComponents) {
+    const types = component.types;
+
+    if (types.includes('route')) {
+      info.route = component.long_name;
+    }
+    else if (types.includes('street_number')) {
+      info.streetNumber = component.long_name;
+    }
+    else if (types.includes('sublocality_level_1') || 
+             types.includes('neighborhood') || 
+             types.includes('sublocality')) {
+      info.colonia = component.long_name;
+    }
+    else if (types.includes('postal_code')) {
+      info.codigoPostal = component.long_name;
+    }
+    else if (types.includes('locality')) {
+      info.ciudad = component.long_name;
+    }
+    else if (types.includes('administrative_area_level_1')) {
+      info.estado = component.long_name;
+    }
+  }
+
+  return info;
 };
 
-const getLocationFromGeoNames = async (codigoPostal) => {
+const getLocationFromGoogle = async (latitud, longitud) => {
   try {
     const response = await fetch(
-      `https://secure.geonames.org/postalCodeLookupJSON?postalcode=${codigoPostal}&country=MX&username=valisama`
+      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitud},${longitud}&key=AIzaSyD_sitGGMIJT0rDtKWuP18_lbEXQPC0cpk&language=es`
     );
 
     if (!response.ok) {
-      throw new Error('Error en la respuesta de GeoNames');
+      throw new Error('Error en la respuesta de Google Maps');
     }
 
     const data = await response.json();
     
-    if (data && data.postalcodes && data.postalcodes.length > 0) {
-      const place = data.postalcodes[0];
+    if (data.status === 'OK' && data.results.length > 0) {
+      const todasLasColonias = new Set();
+      let locationInfo = null;
+      
+      // Analizar todos los resultados para encontrar la mejor información
+      for (const result of data.results) {
+        const currentInfo = extractLocationInfo(result.address_components);
+        
+        if (currentInfo.colonia) {
+          todasLasColonias.add(currentInfo.colonia);
+        }
+        
+        // Guardar la primera información completa que encontremos
+        if (!locationInfo && currentInfo.route) {
+          locationInfo = currentInfo;
+        }
+      }
+
+      // Si no encontramos información específica, usar el primer resultado
+      if (!locationInfo) {
+        locationInfo = extractLocationInfo(data.results[0].address_components);
+      }
+
+      // Si aún no tenemos colonia, intentar extraerla del formatted_address
+      if (todasLasColonias.size === 0 && data.results[0].formatted_address) {
+        const addressParts = data.results[0].formatted_address.split(',');
+        if (addressParts.length > 1) {
+          // Intentar usar la segunda parte como colonia
+          const posibleColonia = addressParts[1].trim();
+          if (posibleColonia && !posibleColonia.match(/^\d/)) { // Evitar usar números como colonia
+            todasLasColonias.add(posibleColonia);
+          }
+        }
+      }
+
+      // Construir la dirección completa si tenemos calle y número
+      let direccionPrimaria = '';
+      if (locationInfo.route) {
+        direccionPrimaria = locationInfo.route;
+        if (locationInfo.streetNumber) {
+          direccionPrimaria += ` ${locationInfo.streetNumber}`;
+        }
+      }
+
       return {
-        colonia: place.placeName || 'Sin especificar',
-        codigoPostal: codigoPostal,
-        ciudad: place.adminName3 || 'Chetumal',
-        estado: place.adminName1 || 'Quintana Roo',
-        municipio: place.adminName2 || 'Othón P. Blanco',
-        colonias: data.postalcodes.map(p => p.placeName).filter(Boolean)
+        colonia: Array.from(todasLasColonias)[0] || direccionPrimaria || 'Sin especificar',
+        codigoPostal: locationInfo.codigoPostal || 'Sin especificar',
+        ciudad: locationInfo.ciudad || 'Chetumal',
+        estado: locationInfo.estado || 'Quintana Roo',
+        municipio: 'Othón P. Blanco',
+        direccionCompleta: data.results[0].formatted_address,
+        todasLasColonias: Array.from(todasLasColonias),
+        direccionPrimaria: direccionPrimaria
       };
     }
     
-    throw new Error('No se encontraron datos para este código postal');
+    throw new Error('No se encontraron datos para estas coordenadas');
   } catch (error) {
-    console.error('Error al obtener datos de GeoNames:', error);
+    console.error('Error al obtener datos de Google Maps:', error);
     return null;
   }
 };
@@ -47,63 +122,38 @@ export const getCachedLocationDetails = async (latitud, longitud, direccion = ''
       return locationCache.get(key);
     }
 
-    // Extraer código postal de la dirección
-    const codigoPostal = extractCodigoPostal(direccion);
+    // Obtener datos usando geocodificación inversa
+    const locationData = await getLocationFromGoogle(latitud, longitud);
     
-    if (codigoPostal) {
-      // Intentar obtener datos de GeoNames
-      const geonamesData = await getLocationFromGeoNames(codigoPostal);
-      
-      if (geonamesData) {
-        // Si tenemos múltiples colonias, intentar encontrar la correcta basándonos en la dirección
-        let coloniaSeleccionada = geonamesData.colonia;
-        if (geonamesData.colonias && geonamesData.colonias.length > 0) {
-          // Si la dirección contiene el nombre de alguna colonia, usamos esa
-          const coloniaEnDireccion = geonamesData.colonias.find(col => 
-            direccion.toLowerCase().includes(col.toLowerCase())
-          );
-          if (coloniaEnDireccion) {
-            coloniaSeleccionada = coloniaEnDireccion;
-          }
-        }
-
-        const locationDetails = {
-          colonia: coloniaSeleccionada,
-          codigoPostal: geonamesData.codigoPostal,
-          ciudad: geonamesData.ciudad,
-          estado: geonamesData.estado,
-          municipio: geonamesData.municipio,
-          direccionCompleta: direccion,
-          todasLasColonias: geonamesData.colonias
-        };
-
-        // Guardar en caché
-        locationCache.set(key, locationDetails);
-        return locationDetails;
-      }
+    if (locationData) {
+      // Guardar en caché
+      locationCache.set(key, locationData);
+      return locationData;
     }
 
-    // Si no podemos obtener datos de GeoNames, usar valores por defecto
+    // Si no podemos obtener datos, usar valores por defecto
     return {
-      colonia: 'Sin especificar',
-      codigoPostal: codigoPostal || 'Sin especificar',
+      colonia: direccion || 'Sin especificar',
+      codigoPostal: 'Sin especificar',
       ciudad: 'Chetumal',
       estado: 'Quintana Roo',
       municipio: 'Othón P. Blanco',
       direccionCompleta: direccion,
-      todasLasColonias: []
+      todasLasColonias: [],
+      direccionPrimaria: ''
     };
 
   } catch (error) {
     console.error('Error en getCachedLocationDetails:', error);
     return {
-      colonia: 'Sin especificar',
+      colonia: direccion || 'Sin especificar',
       codigoPostal: 'Sin especificar',
       ciudad: 'Chetumal',
       estado: 'Quintana Roo',
       municipio: 'Othón P. Blanco',
-      direccionCompleta: 'Sin dirección',
-      todasLasColonias: []
+      direccionCompleta: direccion,
+      todasLasColonias: [],
+      direccionPrimaria: ''
     };
   }
 };

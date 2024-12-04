@@ -1,10 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, ZoomControl, LayersControl, useMapEvents } from 'react-leaflet';import { collection, query, onSnapshot } from '@firebase/firestore';
+import { 
+  MapContainer, 
+  TileLayer, 
+  Marker, 
+  Popup, 
+  ZoomControl, 
+  LayersControl, 
+  useMapEvents,
+  useMap 
+} from 'react-leaflet';
+import { collection, query, onSnapshot } from '@firebase/firestore';
 import { db } from '../firebase';
 import { icons } from './CustomIcons';
-import HeatmapLayer from './HeatmapLayer';
 import 'leaflet/dist/leaflet.css';
 import { getCachedLocationDetails } from './geocodingService';
+import HeatmapLayer from './HeatmapLayer';
 
 const { BaseLayer} = LayersControl;
 
@@ -431,7 +441,7 @@ const getNeighborhoodStats = () => {
           </div>
   
           {/* Contenedor del Mapa */}
-          <div className="flex-1 min-h-0 rounded-lg overflow-hidden" style={{ height: '140vh' }}>
+          <div className="flex-1 min-h-0 rounded-lg overflow-hidden" style={{ height: '1000px' }}>
           <MapContainer
             key={`${mapCenter[0]}-${mapCenter[1]}-${mapType}`}
             center={mapCenter}
@@ -456,11 +466,8 @@ const getNeighborhoodStats = () => {
                 }}
               >
               <TileLayer
-                url="https://api.maptiler.com/maps/topo-v2/256/{z}/{x}/{y}@2x.png?key=iFjkJKOCUKNcV2OtJe1S"
-                attribution="&copy; <a href='https://www.maptiler.com/'>MapTiler</a>"
-                maxZoom={20}
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
-
               </BaseLayer>
               <BaseLayer 
                 checked={mapType === 'satellite'} 
